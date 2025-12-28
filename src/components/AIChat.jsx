@@ -1,9 +1,14 @@
 import { useState, useRef, useEffect } from "react";
+import emailjs from "emailjs-com";
 
 const AIChat = () => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
+  const [mode, setMode] = useState(null); // null | "recruiter_email"
+  const [emailError, setEmailError] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [dotCount, setDotCount] = useState(1);
 
   const [messages, setMessages] = useState([
     { role: "assistant", content: "Hi 👋 Ask me anything about Harshita!" },
@@ -20,7 +25,21 @@ const AIChat = () => {
     "Tell me about her experience",
     "What projects has she worked on?",
     "Is she open to frontend roles?",
+    "Let Harshita know you are looking for a candidate",
   ];
+
+  const isValidEmail = (email) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const sendRecruiterEmail = (email) => {
+    console.log('email: ', email);
+    return emailjs.send(
+      "service_eui32ry",
+      "template_vavxbp5",
+      { email },
+      "V6sAcg1go3SNBbaff"
+    );
+  };
 
   const callGemini = async (message) => {
     const res = await fetch(
@@ -41,6 +60,52 @@ const AIChat = () => {
   const sendMessageWithText = async (text) => {
     if (!text.trim()) return;
 
+    /* ---- Recruiter Flow ---- */
+    if (text === "Let Harshita know you are looking for a candidate") {
+      setMessages([
+        ...messages,
+        {
+          role: "assistant",
+          content:
+            "That’s great! 🎉\n\nI’ll share this message with Harshita:\n\n“Hi Harshita, I came across your portfolio and would like to connect regarding a frontend / React opportunity.”\n\nPlease share your email so she can contact you.",
+        },
+      ]);
+      setMode("recruiter_email");
+      setInput("");
+      return;
+    }
+
+    if (mode === "recruiter_email") {
+      if (!isValidEmail(text)) {
+        setEmailError("Please enter a valid email address.");
+        return;
+      }
+
+      try {
+        setSendingEmail(true);
+        await sendRecruiterEmail(text);
+        setMessages([
+          ...messages,
+          {
+            role: "assistant",
+            content:
+              "✅ Thank you! Harshita has received your message and may reach out soon.",
+          },
+        ]);
+
+        setMode(null);
+        setEmailError("");
+        setInput("");
+      } catch {
+        setEmailError("Something went wrong. Please try again.");
+      } finally {
+        setSendingEmail(false);
+      }
+      return;
+    }
+
+    /* ---- Normal AI Flow ---- */
+    setEmailError("");
     const userMessage = { role: "user", content: text };
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
@@ -67,24 +132,21 @@ const AIChat = () => {
 You are a portfolio assistant for Harshita Sahu.
 
 You MUST answer confidently using ONLY the information below.
-DO NOT say "I don't know", "unfortunately", or similar phrases.
-If asked about projects, ALWAYS mention them clearly.
+DO NOT say "I don't know".
 
 Harshita Sahu is a React and React Native Developer with 2.5+ years of experience at Gammastack.
 
-Projects she has worked on include:
-1. FF Deposit Automation – Built an automated cash-in flow by parsing incoming SMS and updating user balances in real time, reducing manual verification by ~70–80%.
-2. Casino Applications – Worked on features like daily bonus systems, spin-the-wheel mechanics, gameplay flows, multi-language support, and secure payment integrations.
-3. Handheld Application – Developed a handheld device application for operational workflows using React Native.
+Projects:
+1. FF Deposit Automation – automated SMS-based cash-in flow.
+2. Casino Applications – daily bonus, spin-the-wheel, gameplay, multi-language.
+3. Handheld Application – sportsbook app for 8Dex with printable bet slips and user management.
 
 Skills:
 React, React Native, JavaScript, Redux Toolkit, RTK Query, REST APIs.
 
 Education:
-BCA and MCA from SCSIT DAVV with CGPA 7.5.
-
-Keep answers concise, confident, and professional.
-`
+BCA and MCA (CGPA 7.5).
+`,
               },
               ...updatedMessages,
             ],
@@ -118,13 +180,8 @@ Keep answers concise, confident, and professional.
     }
   };
 
-  const sendMessage = () => {
-    sendMessageWithText(input);
-  };
-
   return (
     <>
-      {/* Floating Button */}
       <button
         onClick={() => setOpen(!open)}
         style={{
@@ -138,14 +195,12 @@ Keep answers concise, confident, and professional.
           fontWeight: 600,
           border: "none",
           cursor: "pointer",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
           zIndex: 1000,
         }}
       >
         🤖 Ask AI
       </button>
 
-      {/* Chat Box */}
       {open && (
         <div
           style={{
@@ -153,23 +208,14 @@ Keep answers concise, confident, and professional.
             bottom: 80,
             right: 24,
             width: 340,
-            background: "linear-gradient(180deg,#020617,#020617cc)",
+            background: "#020617",
             border: "1px solid #1e293b",
             borderRadius: "16px",
             padding: "14px",
-            boxShadow: "0 30px 60px rgba(0,0,0,0.6)",
             zIndex: 1000,
           }}
         >
-          {/* Suggestions */}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "6px",
-              marginBottom: "10px",
-            }}
-          >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
             {suggestions.map((q) => (
               <button
                 key={q}
@@ -189,44 +235,28 @@ Keep answers concise, confident, and professional.
             ))}
           </div>
 
-          {/* Messages */}
-          <div
-            className="ai-chat-scroll"
-            style={{
-              height: 220,
-              overflowY: "auto",
-              fontSize: 14,
-              marginBottom: 8,
-            }}
-          >
-
+          <div className="ai-chat-scroll" style={{ height: 220, overflowY: "auto", marginTop: 10 }}>
             {messages.map((m, i) => (
-              <p
-                key={i}
-                style={{
-                  marginBottom: "8px",
-                  color: m.role === "assistant" ? "#e5e7eb" : "#38bdf8",
-                }}
-              >
-                <strong>{m.role === "assistant" ? "AI" : "You"}:</strong>{" "}
-                {m.content}
+              <p key={i} style={{ color: m.role === "assistant" ? "#e5e7eb" : "#38bdf8" }}>
+                <strong>{m.role === "assistant" ? "AI" : "You"}:</strong> {m.content}
               </p>
             ))}
-
-            {loading && (
-              <p style={{ color: "#94a3b8", fontStyle: "italic" }}>
-                AI is thinking...
-              </p>
-            )}
-
+            {loading && <p style={{ color: "#94a3b8" }}>AI is thinking...</p>}
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
+          {emailError && (
+            <p style={{ color: "red", fontSize: "12px" }}>{emailError}</p>
+          )}
+
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about skills, experience..."
+            placeholder={
+              mode === "recruiter_email"
+                ? "Enter your email"
+                : "Ask about skills, experience..."
+            }
             style={{
               width: "100%",
               padding: "8px",
@@ -234,24 +264,30 @@ Keep answers concise, confident, and professional.
               border: "1px solid #1e293b",
               background: "#020617",
               color: "white",
-              outline: "none",
+              marginTop: 6,
             }}
           />
 
           <button
-            onClick={sendMessage}
+            onClick={() => sendMessageWithText(input)}
+            disabled={sendingEmail || loading}
             style={{
               marginTop: 6,
               width: "100%",
               padding: "8px",
-              background: "#38bdf8",
+              background: sendingEmail ? "#94a3b8" : "#38bdf8",
               border: "none",
               borderRadius: 8,
-              cursor: "pointer",
               fontWeight: 600,
+              cursor: sendingEmail ? "not-allowed" : "pointer",
+              opacity: sendingEmail ? 0.8 : 1,
             }}
           >
-            Send
+            {sendingEmail
+              ? `Sending email...`
+              : loading
+                ? "AI is thinking..."
+                : "Send"}
           </button>
         </div>
       )}
